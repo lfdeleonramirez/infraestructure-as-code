@@ -1,0 +1,335 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Arquitectura 3 - 2 VPCs + Multi-AZ (2 pub + 2 priv cada una) + Internet Gateway + VPC Peering'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: prod
+    Description: Nombre del ambiente
+  VpcACIDR:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR block para VPC A
+  VpcBCIDR:
+    Type: String
+    Default: 10.1.0.0/16
+    Description: CIDR block para VPC B
+  # VPC A Subnets
+  VpcAPublicSubnet1CIDR:
+    Type: String
+    Default: 10.0.1.0/24
+  VpcAPublicSubnet2CIDR:
+    Type: String
+    Default: 10.0.2.0/24
+  VpcAPrivateSubnet1CIDR:
+    Type: String
+    Default: 10.0.3.0/24
+  VpcAPrivateSubnet2CIDR:
+    Type: String
+    Default: 10.0.4.0/24
+  # VPC B Subnets
+  VpcBPublicSubnet1CIDR:
+    Type: String
+    Default: 10.1.1.0/24
+  VpcBPublicSubnet2CIDR:
+    Type: String
+    Default: 10.1.2.0/24
+  VpcBPrivateSubnet1CIDR:
+    Type: String
+    Default: 10.1.3.0/24
+  VpcBPrivateSubnet2CIDR:
+    Type: String
+    Default: 10.1.4.0/24
+
+Resources:
+  # ==================== VPC A ====================
+  VpcA:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcACIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a'
+
+  InternetGatewayA:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-igw-a'
+
+  IGWAttachmentA:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGatewayA
+      VpcId: !Ref VpcA
+
+  # VPC A - Public Subnets
+  VpcAPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcA
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Ref VpcAPublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-public-1'
+
+  VpcAPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcA
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Ref VpcAPublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-public-2'
+
+  # VPC A - Private Subnets
+  VpcAPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcA
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Ref VpcAPrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-private-1'
+
+  VpcAPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcA
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Ref VpcAPrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-private-2'
+
+  # VPC A - Route Tables
+  VpcAPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcA
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-public-rt'
+
+  VpcAPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachmentA
+    Properties:
+      RouteTableId: !Ref VpcAPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGatewayA
+
+  VpcAPublicSubnet1RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VpcAPublicRouteTable
+      SubnetId: !Ref VpcAPublicSubnet1
+
+  VpcAPublicSubnet2RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VpcAPublicRouteTable
+      SubnetId: !Ref VpcAPublicSubnet2
+
+  VpcAPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcA
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-private-rt'
+
+  VpcAPrivateSubnet1RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VpcAPrivateRouteTable
+      SubnetId: !Ref VpcAPrivateSubnet1
+
+  VpcAPrivateSubnet2RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VpcAPrivateRouteTable
+      SubnetId: !Ref VpcAPrivateSubnet2
+
+  # ==================== VPC B ====================
+  VpcB:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcBCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b'
+
+  InternetGatewayB:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-igw-b'
+
+  IGWAttachmentB:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGatewayB
+      VpcId: !Ref VpcB
+
+  # VPC B - Public Subnets
+  VpcBPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcB
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Ref VpcBPublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-public-1'
+
+  VpcBPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcB
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Ref VpcBPublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-public-2'
+
+  # VPC B - Private Subnets
+  VpcBPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcB
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Ref VpcBPrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-private-1'
+
+  VpcBPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcB
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Ref VpcBPrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-private-2'
+
+  # VPC B - Route Tables
+  VpcBPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcB
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-public-rt'
+
+  VpcBPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachmentB
+    Properties:
+      RouteTableId: !Ref VpcBPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGatewayB
+
+  VpcBPublicSubnet1RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VpcBPublicRouteTable
+      SubnetId: !Ref VpcBPublicSubnet1
+
+  VpcBPublicSubnet2RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VpcBPublicRouteTable
+      SubnetId: !Ref VpcBPublicSubnet2
+
+  VpcBPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcB
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-private-rt'
+
+  VpcBPrivateSubnet1RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VpcBPrivateRouteTable
+      SubnetId: !Ref VpcBPrivateSubnet1
+
+  VpcBPrivateSubnet2RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VpcBPrivateRouteTable
+      SubnetId: !Ref VpcBPrivateSubnet2
+
+  # ==================== VPC PEERING ====================
+  VPCPeeringConnection:
+    Type: AWS::EC2::VPCPeeringConnection
+    Properties:
+      VpcId: !Ref VpcA
+      PeerVpcId: !Ref VpcB
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-peering-a-to-b'
+
+  # Rutas de Peering - VPC A hacia VPC B
+  VpcAPeeringRoutePublic:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref VpcAPublicRouteTable
+      DestinationCidrBlock: !Ref VpcBCIDR
+      VpcPeeringConnectionId: !Ref VPCPeeringConnection
+
+  VpcAPeeringRoutePrivate:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref VpcAPrivateRouteTable
+      DestinationCidrBlock: !Ref VpcBCIDR
+      VpcPeeringConnectionId: !Ref VPCPeeringConnection
+
+  # Rutas de Peering - VPC B hacia VPC A
+  VpcBPeeringRoutePublic:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref VpcBPublicRouteTable
+      DestinationCidrBlock: !Ref VpcACIDR
+      VpcPeeringConnectionId: !Ref VPCPeeringConnection
+
+  VpcBPeeringRoutePrivate:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref VpcBPrivateRouteTable
+      DestinationCidrBlock: !Ref VpcACIDR
+      VpcPeeringConnectionId: !Ref VPCPeeringConnection
+
+Outputs:
+  VpcAId:
+    Value: !Ref VpcA
+    Export:
+      Name: !Sub '${EnvironmentName}-VpcAId'
+  VpcBId:
+    Value: !Ref VpcB
+    Export:
+      Name: !Sub '${EnvironmentName}-VpcBId'
+  VPCPeeringConnectionId:
+    Value: !Ref VPCPeeringConnection
+    Export:
+      Name: !Sub '${EnvironmentName}-PeeringId'

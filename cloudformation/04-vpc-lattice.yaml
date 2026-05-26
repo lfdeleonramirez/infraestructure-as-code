@@ -1,0 +1,344 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Arquitectura 4 - 2 VPCs + Multi-AZ + Internet Gateway + VPC Lattice Service Network + Lattice Service + Lattice Target Group'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: prod
+    Description: Nombre del ambiente
+  VpcACIDR:
+    Type: String
+    Default: 10.0.0.0/16
+  VpcBCIDR:
+    Type: String
+    Default: 10.1.0.0/16
+  VpcAPublicSubnet1CIDR:
+    Type: String
+    Default: 10.0.1.0/24
+  VpcAPublicSubnet2CIDR:
+    Type: String
+    Default: 10.0.2.0/24
+  VpcAPrivateSubnet1CIDR:
+    Type: String
+    Default: 10.0.3.0/24
+  VpcAPrivateSubnet2CIDR:
+    Type: String
+    Default: 10.0.4.0/24
+  VpcBPublicSubnet1CIDR:
+    Type: String
+    Default: 10.1.1.0/24
+  VpcBPublicSubnet2CIDR:
+    Type: String
+    Default: 10.1.2.0/24
+  VpcBPrivateSubnet1CIDR:
+    Type: String
+    Default: 10.1.3.0/24
+  VpcBPrivateSubnet2CIDR:
+    Type: String
+    Default: 10.1.4.0/24
+  TargetPort:
+    Type: Number
+    Default: 80
+    Description: Puerto del target group
+
+Resources:
+  # ==================== VPC A (Consumer) ====================
+  VpcA:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcACIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-consumer'
+
+  InternetGatewayA:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-igw-a'
+
+  IGWAttachmentA:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGatewayA
+      VpcId: !Ref VpcA
+
+  VpcAPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcA
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Ref VpcAPublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-public-1'
+
+  VpcAPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcA
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Ref VpcAPublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-public-2'
+
+  VpcAPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcA
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Ref VpcAPrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-private-1'
+
+  VpcAPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcA
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Ref VpcAPrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-private-2'
+
+  VpcAPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcA
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-public-rt'
+
+  VpcAPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachmentA
+    Properties:
+      RouteTableId: !Ref VpcAPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGatewayA
+
+  VpcAPublicSubnet1RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VpcAPublicRouteTable
+      SubnetId: !Ref VpcAPublicSubnet1
+
+  VpcAPublicSubnet2RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VpcAPublicRouteTable
+      SubnetId: !Ref VpcAPublicSubnet2
+
+  # ==================== VPC B (Provider) ====================
+  VpcB:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcBCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-provider'
+
+  InternetGatewayB:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-igw-b'
+
+  IGWAttachmentB:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGatewayB
+      VpcId: !Ref VpcB
+
+  VpcBPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcB
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Ref VpcBPublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-public-1'
+
+  VpcBPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcB
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Ref VpcBPublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-public-2'
+
+  VpcBPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcB
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Ref VpcBPrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-private-1'
+
+  VpcBPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcB
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Ref VpcBPrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-private-2'
+
+  VpcBPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcB
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-public-rt'
+
+  VpcBPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachmentB
+    Properties:
+      RouteTableId: !Ref VpcBPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGatewayB
+
+  VpcBPublicSubnet1RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VpcBPublicRouteTable
+      SubnetId: !Ref VpcBPublicSubnet1
+
+  VpcBPublicSubnet2RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VpcBPublicRouteTable
+      SubnetId: !Ref VpcBPublicSubnet2
+
+  # ==================== VPC LATTICE ====================
+  # Service Network
+  LatticeServiceNetwork:
+    Type: AWS::VpcLattice::ServiceNetwork
+    Properties:
+      Name: !Sub '${EnvironmentName}-service-network'
+      AuthType: NONE
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-lattice-sn'
+
+  # VPC A Association to Service Network
+  VpcAServiceNetworkAssociation:
+    Type: AWS::VpcLattice::ServiceNetworkVpcAssociation
+    Properties:
+      ServiceNetworkIdentifier: !Ref LatticeServiceNetwork
+      VpcIdentifier: !Ref VpcA
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-a-sn-assoc'
+
+  # VPC B Association to Service Network
+  VpcBServiceNetworkAssociation:
+    Type: AWS::VpcLattice::ServiceNetworkVpcAssociation
+    Properties:
+      ServiceNetworkIdentifier: !Ref LatticeServiceNetwork
+      VpcIdentifier: !Ref VpcB
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc-b-sn-assoc'
+
+  # Lattice Service
+  LatticeService:
+    Type: AWS::VpcLattice::Service
+    Properties:
+      Name: !Sub '${EnvironmentName}-lattice-service'
+      AuthType: NONE
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-lattice-service'
+
+  # Associate Service to Service Network
+  LatticeServiceNetworkServiceAssociation:
+    Type: AWS::VpcLattice::ServiceNetworkServiceAssociation
+    Properties:
+      ServiceNetworkIdentifier: !Ref LatticeServiceNetwork
+      ServiceIdentifier: !Ref LatticeService
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-sn-service-assoc'
+
+  # Lattice Target Group
+  LatticeTargetGroup:
+    Type: AWS::VpcLattice::TargetGroup
+    Properties:
+      Name: !Sub '${EnvironmentName}-target-group'
+      Type: INSTANCE
+      Config:
+        Port: !Ref TargetPort
+        Protocol: HTTP
+        VpcIdentifier: !Ref VpcB
+        HealthCheck:
+          Enabled: true
+          Protocol: HTTP
+          Path: /health
+          Port: !Ref TargetPort
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-lattice-tg'
+
+  # Lattice Listener
+  LatticeListener:
+    Type: AWS::VpcLattice::Listener
+    Properties:
+      ServiceIdentifier: !Ref LatticeService
+      Name: !Sub '${EnvironmentName}-listener'
+      Protocol: HTTP
+      Port: 80
+      DefaultAction:
+        Forward:
+          TargetGroups:
+            - TargetGroupIdentifier: !Ref LatticeTargetGroup
+              Weight: 100
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-lattice-listener'
+
+Outputs:
+  VpcAId:
+    Value: !Ref VpcA
+    Export:
+      Name: !Sub '${EnvironmentName}-VpcAId'
+  VpcBId:
+    Value: !Ref VpcB
+    Export:
+      Name: !Sub '${EnvironmentName}-VpcBId'
+  LatticeServiceNetworkId:
+    Value: !Ref LatticeServiceNetwork
+    Export:
+      Name: !Sub '${EnvironmentName}-LatticeServiceNetworkId'
+  LatticeServiceId:
+    Value: !Ref LatticeService
+    Export:
+      Name: !Sub '${EnvironmentName}-LatticeServiceId'
+  LatticeTargetGroupId:
+    Value: !Ref LatticeTargetGroup
+    Export:
+      Name: !Sub '${EnvironmentName}-LatticeTargetGroupId'
